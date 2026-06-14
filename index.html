@@ -876,6 +876,16 @@ footer span { color: var(--crimson-glow); }
   .hero-name, .hero-eyebrow, .hero-title, .hero-desc, .hero-btns { opacity: 1; animation: none; }
   nav { transform: none; animation: none; }
 }
+
+/* ── TOAST NOTIFICATIONS ── */
+.toast-container { position: fixed; right: 20px; bottom: 20px; z-index: 12000; display: flex; flex-direction: column; gap: 10px; }
+.toast { min-width: 220px; max-width: 360px; padding: 10px 14px; border-radius: 8px; color: #fff; opacity: 0; transform: translateY(8px) scale(0.98); transition: opacity .25s, transform .25s; box-shadow: 0 10px 30px rgba(0,0,0,0.35); font-family: 'Inter', sans-serif; font-size: 0.95rem; display: flex; align-items: center; gap: 10px; }
+.toast.visible { opacity: 1; transform: translateY(0) scale(1); }
+.toast.success { background: #2ecc71; }
+.toast.error   { background: #e74c3c; }
+.toast.info    { background: #3498db; }
+.toast .msg { flex: 1; }
+.toast .close { background: transparent; border: 0; color: rgba(255,255,255,0.95); font-size: 1.1rem; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -1243,40 +1253,66 @@ if (videoBackdrop) {
 </script>
 
 <script>
-/* Initialize EmailJS */
-emailjs.init('LbzKoBojMP7q17DwE');
+/* Initialize EmailJS (load SDK if missing) */
+(async function ensureEmailJS() {
+  if (typeof window.emailjs === 'undefined') {
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/build/index.min.js';
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Failed to load EmailJS SDK'));
+        document.head.appendChild(s);
+      });
+    } catch (err) {
+      console.error('EmailJS SDK load error:', err);
+      showToast('Email service unavailable (load error).', 'error', 6000);
+      return;
+    }
+  }
+  try { emailjs.init('LbzKoBojMP7q17DwE'); } catch (e) { console.error('EmailJS init error', e); }
+})();
+
+/* Toast helper */
+function showToast(msg, type = 'info', ms = 3500) {
+  let container = document.querySelector('.toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.setAttribute('role', 'status');
+  t.setAttribute('aria-live', 'polite');
+  t.innerHTML = `<div class="msg">${msg}</div><button class="close" aria-label="Dismiss">×</button>`;
+  const closeBtn = t.querySelector('.close');
+  closeBtn.addEventListener('click', () => { t.classList.remove('visible'); setTimeout(() => t.remove(), 250); });
+  container.appendChild(t);
+  // force reflow then show
+  requestAnimationFrame(() => t.classList.add('visible'));
+  setTimeout(() => { t.classList.remove('visible'); setTimeout(() => t.remove(), 250); }, ms);
+}
 
 const contactForm = document.querySelector('.contact-form');
 if (contactForm) {
   const formSubmit = contactForm.querySelector('.form-submit');
-  const formInputs = contactForm.querySelectorAll('input, textarea');
 
   contactForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     formSubmit.disabled = true;
-    formSubmit.textContent = '⚔ Sending...';
+    showToast('Sending message…', 'info', 5000);
 
     try {
       await emailjs.sendForm('service_eazhl', 'template_eazhl', '#contactForm');
-
-      formSubmit.textContent = '✓ Message Sent!';
-      formSubmit.style.background = 'var(--sql-blue)';
+      showToast('Message sent — thank you!', 'success', 4000);
       contactForm.reset();
-
-      setTimeout(() => {
-        formSubmit.disabled = false;
-        formSubmit.textContent = '⚔ Send Message';
-        formSubmit.style.background = '';
-      }, 3000);
     } catch (error) {
       console.error('EmailJS send error:', error);
-      formSubmit.textContent = '✗ Send Failed';
-      formSubmit.style.background = 'var(--crimson-glow)';
-      setTimeout(() => {
-        formSubmit.disabled = false;
-        formSubmit.textContent = '⚔ Send Message';
-        formSubmit.style.background = '';
-      }, 2000);
+      showToast('Send failed — please try again later.', 'error', 5000);
+    } finally {
+      formSubmit.disabled = false;
     }
   });
 }
